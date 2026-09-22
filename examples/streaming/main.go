@@ -20,9 +20,8 @@ func main() {
 	client := cortiqa.NewClient(apiKey)
 	ctx := context.Background()
 
-	fmt.Println("Streaming response from falin-01:\n")
+	fmt.Println("Streaming response from Cortiqa:")
 	stream, err := client.Chat.CreateStream(ctx, cortiqa.ChatCompletionRequest{
-		Model: "falin-01",
 		Messages: []cortiqa.ChatMessage{
 			{Role: "user", Content: "Write a short haiku about coding."},
 		},

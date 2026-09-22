@@ -21,9 +21,21 @@ type MessagesService struct {
 	client *Client
 }
 
+func (s *ChatService) normalizeRequest(req *ChatCompletionRequest) {
+	if req.Model == "" {
+		req.Model = s.client.defaultModel
+	}
+	for i := range req.Tools {
+		if req.Tools[i].Type == "" {
+			req.Tools[i].Type = "function"
+		}
+	}
+}
+
 // Create sends a non-streaming chat completion request.
 func (s *ChatService) Create(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionResponse, error) {
 	req.Stream = false
+	s.normalizeRequest(&req)
 	var resp ChatCompletionResponse
 	err := s.client.sendRequest(ctx, http.MethodPost, "/v1/chat/completions", req, &resp)
 	if err != nil {
@@ -80,6 +92,7 @@ func (s *ChatStream) Close() error {
 // CreateStream opens an SSE stream for real-time tokens.
 func (s *ChatService) CreateStream(ctx context.Context, req ChatCompletionRequest) (*ChatStream, error) {
 	req.Stream = true
+	s.normalizeRequest(&req)
 	bodyData, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("cortiqa: failed to encode stream payload: %w", err)

@@ -2,11 +2,21 @@ package cortiqa
 
 // ChatMessage represents a single message in a chat conversation.
 type ChatMessage struct {
-	Role       string     `json:"role"`
-	Content    string     `json:"content"`
-	Name       string     `json:"name,omitempty"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
+	Role             string     `json:"role"`
+	Content          string     `json:"content"`
+	Reasoning        string     `json:"reasoning,omitempty"`
+	ReasoningContent string     `json:"reasoning_content,omitempty"`
+	Name             string     `json:"name,omitempty"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string     `json:"tool_call_id,omitempty"`
+}
+
+// Thought returns the reasoning content or reasoning chain of thought.
+func (m *ChatMessage) Thought() string {
+	if m.Reasoning != "" {
+		return m.Reasoning
+	}
+	return m.ReasoningContent
 }
 
 // FunctionDefinition specifies a tool function available to the model.
@@ -37,7 +47,7 @@ type ToolCall struct {
 
 // ChatCompletionRequest is the payload sent to create completions.
 type ChatCompletionRequest struct {
-	Model       string        `json:"model"`
+	Model       string        `json:"model,omitempty"`
 	Messages    []ChatMessage `json:"messages"`
 	Temperature *float64      `json:"temperature,omitempty"`
 	MaxTokens   *int          `json:"max_tokens,omitempty"`
@@ -79,13 +89,23 @@ func (r *ChatCompletionResponse) Content() string {
 	return ""
 }
 
+// Reasoning returns the reasoning / chain-of-thought of the first choice message.
+func (r *ChatCompletionResponse) Reasoning() string {
+	if len(r.Choices) > 0 {
+		return r.Choices[0].Message.Thought()
+	}
+	return ""
+}
+
 // ChatCompletionStreamChoice is a streamed choice delta.
 type ChatCompletionStreamChoice struct {
-	Index        int `json:"index"`
-	Delta        struct {
-		Role      string     `json:"role,omitempty"`
-		Content   string     `json:"content,omitempty"`
-		ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+	Index int `json:"index"`
+	Delta struct {
+		Role             string     `json:"role,omitempty"`
+		Content          string     `json:"content,omitempty"`
+		Reasoning        string     `json:"reasoning,omitempty"`
+		ReasoningContent string     `json:"reasoning_content,omitempty"`
+		ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
 	} `json:"delta"`
 	FinishReason string `json:"finish_reason,omitempty"`
 }

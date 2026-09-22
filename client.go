@@ -92,37 +92,78 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, body inte
 }
 
 func (c *Client) parseError(statusCode int, body []byte) error {
-	var errResp struct {
-		Success bool `json:"success"`
-		Error   interface{} `json:"error"`
-		Message string      `json:"message"`
-	}
-
+	var raw map[string]interface{}
 	errMsg := string(body)
-	if err := json.Unmarshal(body, &errResp); err == nil {
-		if s, ok := errResp.Error.(string); ok && s != "" {
-			errMsg = s
-		} else if m, ok := errResp.Error.(map[string]interface{}); ok {
-			if msg, exists := m["message"].(string); exists {
-				errMsg = msg
+	var param, code, errorType string
+
+	if err := json.Unmarshal(body, &raw); err == nil {
+		// 1. Check FastAPI / Pydantic detail array
+		if detailRaw, ok := raw["detail"]; ok {
+			if detailArr, isArr := detailRaw.([]interface{}); isArr && len(detailArr) > 0 {
+				if firstMap, isMap := detailArr[0].(map[string]interface{}); isMap {
+					if locArr, hasLoc := firstMap["loc"].([]interface{}); hasLoc && len(locArr) > 0 {
+						param = fmt.Sprintf("%v", locArr[len(locArr)-1])
+					}
+					if t, hasT := firstMap["type"].(string); hasT {
+						code = t
+					}
+					if m, hasM := firstMap["msg"].(string); hasM {
+						if param != "" {
+							errMsg = fmt.Sprintf("Parameter '%s': %s", param, m)
+						} else {
+							errMsg = m
+						}
+					}
+				}
+			} else if detailStr, isStr := detailRaw.(string); isStr {
+				errMsg = detailStr
 			}
-		} else if errResp.Message != "" {
-			errMsg = errResp.Message
+		} else if errObj, hasErr := raw["error"]; hasErr {
+			// 2. Check OpenAI standard error object
+			if m, ok := errObj.(map[string]interface{}); ok {
+				if msg, exists := m["message"].(string); exists {
+					errMsg = msg
+				}
+				if p, exists := m["param"].(string); exists {
+					param = p
+				}
+				if cStr, exists := m["code"].(string); exists {
+					code = cStr
+				}
+				if t, exists := m["type"].(string); exists {
+					errorType = t
+				}
+			} else if s, ok := errObj.(string); ok && s != "" {
+				errMsg = s
+			}
+		} else if msg, exists := raw["message"].(string); exists && msg != "" {
+			errMsg = msg
 		}
 	}
 
 	baseErr := APIError{
 		StatusCode: statusCode,
 		Message:    errMsg,
+		Param:      param,
+		Code:       code,
+		ErrorType:  errorType,
 	}
 
 	switch statusCode {
+	case http.StatusBadRequest:
+		return &BadRequestError{APIError: baseErr}
 	case http.StatusUnauthorized:
 		return &AuthenticationError{APIError: baseErr}
-	case http.StatusTooManyRequests:
-		return &RateLimitError{APIError: baseErr}
+	case http.StatusForbidden:
+		return &PermissionDeniedError{APIError: baseErr}
 	case http.StatusNotFound:
 		return &NotFoundError{APIError: baseErr}
+	case http.StatusUnprocessableEntity:
+		return &UnprocessableEntityError{APIError: baseErr}
+	case http.StatusTooManyRequests:
+		return &RateLimitError{APIError: baseErr}
+	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return &InternalServerError{APIError: baseErr}
 	default:
 		return &baseErr
 	}
